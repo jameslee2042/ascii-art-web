@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>ASCII 아트 변환기</title>
+
+<style>
+  body {
+    background: #eee;
+    color: #111;
+    font-family: monospace;
+    display: flex;
+    flex-direction: column; /*정렬*/
+    align-items: center;
+    margin-top: 30px;
+  }
+
+  h2 {
+    margin-bottom: 10px;
+  }
+
+  #ascii {
+    white-space: pre;     /*명시적으로 white-space: pre;를 지정하면 모든 브라우저에서 공백을 동일하게 유지*/
+    font-size: 7px;        /* 중간 크기 → 너무 조밀하지 않게 */
+    line-height: 7px;      /* 비율 유지 */
+    letter-spacing: 0.5px; /* 살짝 여유 */
+    font-family: monospace;
+    background: #fff;     
+  color: #000; 
+    padding: 10px;	
+    border-radius: 8px;
+    overflow: auto;  /*가로로 길이가 영역을 넘어갈 경우 스크롤바 자동 표시*/
+    max-width: 95vw;
+    max-height: 80vh;
+  }
+
+  input {
+    margin: 10px 0;
+  }
+</style>
+</head>
+
+<body>
+  <h2>아스키 아트 변환기</h2>
+  <input type="file" id="upload" accept="image/*">
+  <canvas id="canvas" style="display:inline;"></canvas>
+  <pre id="ascii"></pre>
+<!--자바스크립트 시작-->
+<script>
+  // 어두운 문자부터 밝은 문자까지 (적당한 단계)
+  const asciiChars = "@#W$%8&*+=-:. ";
+
+  document.getElementById("upload").addEventListener("change", (event) => { //HTML에서 id가 "upload"인 요소를 가져옴(input을 의미), 파일을 선택할 때 change 이벤트 발생
+    const file = event.target.files[0]; //event.target ->이벤트가 발생한 요소 (<input> 요소), .files → 선택한 파일 목록 (FileList 객체), [0] → 첫 번째 파일 선택 (한 번에 하나의 파일만 처리)
+    if (!file) return; //안전장치 → 파일 없으면 더 이상 처리하지 않음
+
+    const img = new Image(); //새로운 이미지 객체(Image) 생성, JS에서 이미지를 다루기 위한 객체 (빈 상자)
+    img.src = URL.createObjectURL(file);//URL.createObjectURL(file) → 선택한 파일을 브라우저에서 읽을 수 있는 임시 URL로 변환, img.src에 넣으면 이미지가 메모리 상에서 로드됨
+    img.onload = () => convertToAscii(img);//img.onload-> "이미지가 다 로드 되면"이라는 이벤트, convertToAscii(img) 함수 실행
+  });
+//함수 시작
+  function convertToAscii(img) {
+    const canvas = document.getElementById("canvas"); //canvas 변수에 canvas요소 입력
+    const ctx = canvas.getContext("2d"); // ctx 변수에 canvas를 2d로 사용할 거라는 그런 내용 씀
+
+    // 중간 수준 해상도 (디테일 + 여백 균형)
+    const maxWidth = 180;  
+    const aspectRatio = img.height / img.width;
+    const charAspect = 1.6;
+    const height = Math.floor(maxWidth * aspectRatio / charAspect);         //문자의 길이가 세로가 가로보다 약간 길기 때문에 그걸 보정한거, Math.floor: 소수점 버리고 정수로 만들기 (행 수는 정수여야 함)
+    
+
+    canvas.width = maxWidth;
+    canvas.height = height; // 캔버스 픽셀 크기를 결정
+
+    ctx.drawImage(img, 0, 0, maxWidth, height);///////////이미지를 캔버스에 리사이즈해서 그림. 이 순간 캔버스에 (maxWidth x height) 픽셀 데이터가 생김.
+
+    const imageData = ctx.getImageData(0, 0, maxWidth, height); 
+    const pixels = imageData.data;                                //getImageData로 픽셀 데이터(R,G,B,A)를 1차원 배열로 얻음. 배열 구조: [R0,G0,B0,A0, R1,G1,B1,A1, ...].
+
+    const contrast = 1.15;    //이미지 대비(contrast) 조정 값
+    const brightnessOffset = 5;     //밝기 보정값(offset) 픽셀마다 밝기에 5를 더해 너무 어두운 픽셀을 조금 밝게 만듦
+
+    let asciiImage = ""; //ASCII 아트를 담을 빈 문자열 생성, 최종적으로 <pre>에 출력됨
+
+
+      //픽셀 루프 (핵심 알고리즘)//
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < maxWidth; x++) {
+        const offset = (y * maxWidth + x) * 4; //일차원배열 인덱스 계산
+        const r = pixels[offset];
+        const g = pixels[offset + 1];
+        const b = pixels[offset + 2];
+
+        let brightness = (0.299 * r + 0.587 * g + 0.114 * b);
+        brightness = brightness * contrast + brightnessOffset;//대비 조정 + 밝기 보정
+        brightness = Math.max(0, Math.min(255, brightness));//0~255 범위로 제한, Math.min-> 두 값 중 작은 값을 반환, Math.max는 반대
+
+        const index = Math.floor((brightness / 255) * (asciiChars.length - 1));
+        asciiImage += asciiChars[index];
+        //brightness / 255 → 0~1 범위로 변환
+        //*(asciiChars.length - 1) → ASCII 문자열 길이에 맞춘 인덱스 계산  
+        //Math.floor() → 정수 인덱스로 변환
+        //asciiChars[index] → 밝기에 맞는 문자 선택
+      }
+      asciiImage += "\n";//줄바꿈
+    }
+
+    document.getElementById("ascii").textContent = asciiImage;//완성된 문자열을 <pre id="ascii"> 요소의 텍스트로 삽입. textContent는 HTML 특수문자를 그대로 텍스트로 처리(보안 및 안정성).
+  }
+</script>
+</body>
+</html>
